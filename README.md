@@ -79,7 +79,7 @@ CarouselAI helps content creators, marketers, and social media managers build pr
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/carouselai.git
+   git clone https://github.com/Gestao-Quatro-Ponto-Zero/carouselai.git
    cd carouselai
    ```
 
@@ -153,6 +153,10 @@ npm run dev      # Start development server
 npm run build    # Build for production
 npm run preview  # Preview production build
 ```
+
+## Built By
+
+Created by [@joaovitor2763](https://github.com/joaovitor2763) - initially prototyped in [Google AI Studio](https://aistudio.google.com/), then developed and refined with the help of [Claude Code](https://claude.ai/code) powered by Claude Opus 4.5.
 
 ## License
 
