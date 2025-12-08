@@ -13,7 +13,7 @@
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Slide, SlideType, AspectRatio } from "../types";
+import { Slide, SlideType, AspectRatio, UploadedDocument } from "../types";
 
 // ============================================================================
 // API KEY MANAGEMENT
@@ -99,6 +99,78 @@ const getApiAspectRatio = (ratio: AspectRatio): string => {
 };
 
 // ============================================================================
+// DOCUMENT PROCESSING
+// ============================================================================
+
+/**
+ * Processes an uploaded file and extracts content for AI generation.
+ *
+ * STRATEGY BY FILE TYPE:
+ * - PDF: Read as base64 for Gemini vision (preserves charts/diagrams)
+ * - TXT/MD: Extract text directly via FileReader
+ *
+ * @param file - The uploaded File object
+ * @returns Promise<UploadedDocument> with extracted content
+ */
+export const processDocument = async (file: File): Promise<UploadedDocument> => {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+
+  switch (extension) {
+    case 'pdf':
+      return await processPdf(file);
+    case 'txt':
+    case 'md':
+      return await processTextFile(file, extension as 'txt' | 'md');
+    default:
+      throw new Error(`Unsupported file type: ${extension}`);
+  }
+};
+
+/**
+ * Processes PDF file - reads as base64 for Gemini vision API.
+ * PDFs are sent as multimodal input so Gemini can see charts, diagrams, and images.
+ */
+const processPdf = async (file: File): Promise<UploadedDocument> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      // Remove "data:application/pdf;base64," prefix to get raw base64
+      const base64 = dataUrl.split(',')[1];
+      resolve({
+        name: file.name,
+        type: 'pdf',
+        content: '', // Content will be extracted by Gemini vision
+        base64,
+        mimeType: 'application/pdf',
+        size: file.size
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read PDF file'));
+    reader.readAsDataURL(file);
+  });
+};
+
+/**
+ * Processes TXT/MD files - reads as plain text.
+ */
+const processTextFile = async (file: File, type: 'txt' | 'md'): Promise<UploadedDocument> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      resolve({
+        name: file.name,
+        type,
+        content: e.target?.result as string,
+        size: file.size
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read text file'));
+    reader.readAsText(file);
+  });
+};
+
+// ============================================================================
 // TEXT GENERATION (Carousel Content)
 // ============================================================================
 
@@ -122,20 +194,37 @@ interface GeneratedSlideSchema {
  * @param topic - The subject matter for the carousel (e.g., "10 productivity tips")
  * @param count - Number of slides to generate (default: 7)
  * @param modelName - Which model to use (defaults to Pro, falls back automatically)
+ * @param document - Optional uploaded document (PDF, TXT, MD) to use as source content
  * @returns Array of Slide objects ready for the editor
  *
  * FALLBACK CHAIN (recursive):
  * Pro 3 → Pro 2.5 → Flash
  * If any model fails, it automatically tries the next one down the chain.
  */
-export const generateCarouselContent = async (topic: string, count: number = 7, modelName: string = TEXT_MODEL_PRO): Promise<Slide[]> => {
+export const generateCarouselContent = async (
+  topic: string,
+  count: number = 7,
+  modelName: string = TEXT_MODEL_PRO,
+  document?: UploadedDocument
+): Promise<Slide[]> => {
+  // Build the prompt based on whether a document is attached
+  const hasDocument = !!document;
+  const documentInstruction = hasDocument
+    ? "Analyze the attached document thoroughly. Extract the key insights, main arguments, and important data points. "
+    : "";
+
+  // For text files, append content to topic
+  const effectiveTopic = document?.content
+    ? (topic ? `${topic}\n\n--- Document Content ---\n${document.content}` : document.content)
+    : topic;
+
   // PROMPT ENGINEERING: Creates a Twitter-thread style carousel with:
   // - Slide 1: Hook/Cover to grab attention
   // - Slides 2-N-1: Educational content
   // - Slide N: Call to Action
   const prompt = `
-      Act as a viral social media expert. Create an Instagram Carousel in the style of a "Twitter Thread" about the following topic: "${topic}".
-      
+      Act as a viral social media expert. ${documentInstruction}Create an Instagram Carousel in the style of a "Twitter Thread" about the following topic: "${effectiveTopic}".
+
       Requirements:
       1. Create exactly ${count} slides.
       2. Slide 1 must be a strong Hook (Type: COVER). Use Markdown for emphasis (e.g. # Header, **bold**).
@@ -143,16 +232,36 @@ export const generateCarouselContent = async (topic: string, count: number = 7, 
       4. Slide ${count} must be a Call to Action (Type: CTA).
       5. Determine if a slide needs an image to be engaging (needsImage).
       6. Provide a 'suggestedImagePrompt' for image generation later. If no image is needed, return an empty string.
-      
+
       Return strictly JSON.
     `;
+
+  // Build contents based on document type
+  // PDF: Use multimodal input (inline base64 + text)
+  // TXT/MD: Text is already included in the prompt above
+  const buildContents = () => {
+    if (document?.type === 'pdf' && document.base64) {
+      return {
+        parts: [
+          {
+            inlineData: {
+              mimeType: document.mimeType,
+              data: document.base64
+            }
+          },
+          { text: prompt }
+        ]
+      };
+    }
+    return prompt;
+  };
 
   // Inner function to call the API with a specific model
   // Uses "structured output" (responseSchema) to guarantee JSON format
   const generate = async (m: string) => {
       const response = await ai.models.generateContent({
         model: m,
-        contents: prompt,
+        contents: buildContents(),
         config: {
           // STRUCTURED OUTPUT: Forces Gemini to return valid JSON
           // matching our schema - no regex parsing needed
@@ -215,7 +324,7 @@ export const generateCarouselContent = async (topic: string, count: number = 7, 
     if (fallbackModel) {
         console.log(`Attempting fallback to ${fallbackModel}...`);
         try {
-            return await generateCarouselContent(topic, count, fallbackModel);
+            return await generateCarouselContent(topic, count, fallbackModel, document);
         } catch (fallbackError) {
             // The recursive call will handle its own logging, but if it bubbles up:
             console.error(`Fallback chain failed at ${fallbackModel}:`, fallbackError);

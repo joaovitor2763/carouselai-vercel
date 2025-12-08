@@ -162,35 +162,21 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
             style={{ height: `${overlayImageHeight}%`, overflow: 'hidden' }}
         >
           {/*
-            EXPORT vs PREVIEW RENDERING PATTERN:
-            - Preview: Use <img> tag with object-fit (better performance during editing)
-            - Export: Use background-image CSS (html-to-image captures it more reliably)
-
+            IMAGE RENDERING:
+            Always use <img> tag - works reliably for both preview and export.
             The crossOrigin="anonymous" attribute is required for html-to-image
             to capture external images without CORS errors.
           */}
-          {forExport ? (
-            <div
-              className="w-full h-full"
-              style={{
-                backgroundImage: `url(${slide.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: `center ${imageOffsetY}%`,
-                backgroundRepeat: 'no-repeat'
-              }}
-            />
-          ) : (
-            <img
-              src={slide.imageUrl}
-              alt="Background"
-              crossOrigin="anonymous"
-              className="w-full h-full transition-all duration-300"
-              style={{
-                objectFit: 'cover',
-                objectPosition: `center ${imageOffsetY}%`
-              }}
-            />
-          )}
+          <img
+            src={slide.imageUrl}
+            alt="Background"
+            {...(slide.imageUrl?.startsWith('data:') ? {} : { crossOrigin: 'anonymous' })}
+            className={`w-full h-full ${forExport ? '' : 'transition-all duration-300'}`}
+            style={{
+              objectFit: 'cover',
+              objectPosition: `center ${imageOffsetY}%`
+            }}
+          />
 
           {/*
             GRADIENT FADE OVERLAY:
@@ -214,42 +200,26 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
 
       {/* --- SPLIT MODE (Hard Line) --- */}
       {showSplit && slide.imageUrl && (
-         forExport ? (
-           // For export: use background-image which html2canvas handles better than object-fit
-           <div
-              className="w-full relative z-0"
-              style={{
-                height: `${splitImageHeight}%`,
-                flexShrink: 0,
-                backgroundImage: `url(${slide.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: `center ${imageOffsetY}%`,
-                backgroundRepeat: 'no-repeat'
-              }}
-           />
-         ) : (
-           // For preview: use img tag with object-fit for better performance
-           <div
-              className="w-full relative z-0"
-              style={{
-                height: `${splitImageHeight}%`,
-                overflow: 'hidden',
-                flexShrink: 0
-              }}
-           >
-               <img
-                  src={slide.imageUrl}
-                  alt="Split View"
-                  crossOrigin="anonymous"
-                  className="w-full h-full transition-all duration-300"
-                  style={{
-                    objectFit: 'cover',
-                    objectPosition: `center ${imageOffsetY}%`,
-                    display: 'block'
-                  }}
-               />
-           </div>
-         )
+        <div
+          className="w-full relative z-0"
+          style={{
+            height: `${splitImageHeight}%`,
+            overflow: 'hidden',
+            flexShrink: 0
+          }}
+        >
+          <img
+            src={slide.imageUrl}
+            alt="Split View"
+            {...(slide.imageUrl?.startsWith('data:') ? {} : { crossOrigin: 'anonymous' })}
+            className={`w-full h-full ${forExport ? '' : 'transition-all duration-300'}`}
+            style={{
+              objectFit: 'cover',
+              objectPosition: `center ${imageOffsetY}%`,
+              display: 'block'
+            }}
+          />
+        </div>
       )}
 
       {/* --- TEXT CONTENT --- */}
@@ -277,7 +247,7 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
            <img
              src={profile.avatarUrl || "https://picsum.photos/200"}
              alt={profile.name}
-             crossOrigin="anonymous"
+             {...(profile.avatarUrl?.startsWith('data:') ? {} : { crossOrigin: 'anonymous' })}
              className="rounded-full object-cover border border-white/20"
              style={{
                width: `${avatarSize}px`,

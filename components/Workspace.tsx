@@ -511,90 +511,65 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   // ============================================================================
 
   /**
-   * Captures a slide element as a PNG image.
-   *
-   * EXPORT MECHANISM: Uses html-to-image library which:
-   * 1. Creates an SVG with a foreignObject containing the HTML
-   * 2. Renders the SVG to a canvas
-   * 3. Exports the canvas as PNG
-   *
-   * CHALLENGE: Export elements are normally positioned off-screen (left: -9999px)
-   * for performance. But browsers may not fully render off-screen content.
-   *
-   * SOLUTION: Temporarily move the element on-screen during capture:
-   * 1. Store original styles
-   * 2. Move element to fixed position at (0,0)
-   * 3. Force browser reflow
-   * 4. Wait 100ms for rendering
-   * 5. Capture with html-to-image
-   * 6. Restore original styles (even on error)
-   *
-   * @param elementId - DOM id of the export container (e.g., "export-slide-abc123")
-   * @returns PNG blob or null on failure
+   * Waits for all <img> elements within an element to finish loading.
    */
-  const captureSlide = async (elementId: string): Promise<Blob | null> => {
-      const element = document.getElementById(elementId);
+  const waitForImages = (element: HTMLElement): Promise<void> => {
+      return new Promise((resolve) => {
+          const images = element.querySelectorAll('img');
+
+          if (images.length === 0) {
+              resolve();
+              return;
+          }
+
+          let loaded = 0;
+          const total = images.length;
+
+          const checkDone = () => {
+              loaded++;
+              if (loaded >= total) resolve();
+          };
+
+          images.forEach((img) => {
+              if (img.complete && img.naturalHeight > 0) {
+                  checkDone();
+              } else {
+                  img.onload = checkDone;
+                  img.onerror = checkDone;
+              }
+          });
+
+          // Safety timeout
+          setTimeout(resolve, 3000);
+      });
+  };
+
+  /**
+   * Captures the visible preview element as a PNG image.
+   * Waits for all images to load before capturing.
+   */
+  const captureSlide = async (): Promise<Blob | null> => {
+      const element = document.getElementById('preview-slide-capture');
       if (!element) return null;
+
+      await waitForImages(element);
 
       const bgColor = theme === 'DARK' ? '#0a0a0a' : '#FFFFFF';
 
-      // Store original styles for restoration after capture
-      const originalElementStyle = element.getAttribute('style') || '';
-      const slideChild = element.firstElementChild as HTMLElement;
-      const originalSlideChildStyle = slideChild?.getAttribute('style') || '';
-
       try {
-          // STEP 1: Move element to visible position
-          // The export containers are hidden off-screen; we bring this one on-screen temporarily
-          element.style.cssText = `
-              position: fixed;
-              top: 0;
-              left: 0;
-              z-index: 9999;
-              visibility: visible;
-              width: ${PREVIEW_WIDTH}px;
-              height: ${previewHeight}px;
-              background-color: ${bgColor};
-          `;
-
-          // Force background color on child with !important to override Tailwind
-          if (slideChild) {
-              slideChild.style.cssText = `${originalSlideChildStyle}; background-color: ${bgColor} !important; width: 100%; height: 100%;`;
-          }
-
-          // STEP 2: Force browser reflow to apply styles
-          void element.offsetHeight;
-
-          // STEP 3: Wait for browser to complete rendering
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-          // STEP 4: Capture using html-to-image library
           const dataUrl = await window.htmlToImage.toPng(element, {
               width: PREVIEW_WIDTH,
               height: previewHeight,
               backgroundColor: bgColor,
-              pixelRatio: 1,    // 1:1 pixel ratio for exact dimensions
-              skipFonts: false, // Include fonts in export
-              cacheBust: true   // Avoid cached versions of images
+              pixelRatio: 1,
+              skipFonts: false,
+              cacheBust: true
           });
 
-          // STEP 5: Restore original styles
-          element.setAttribute('style', originalElementStyle);
-          if (slideChild) {
-              slideChild.setAttribute('style', originalSlideChildStyle);
-          }
-
-          // Convert data URL to blob for download
           const response = await fetch(dataUrl);
-          const blob = await response.blob();
-          return blob;
+          return await response.blob();
       } catch (err) {
           console.error("Capture failed:", err);
-          // Always restore styles, even on error
-          element.setAttribute('style', originalElementStyle);
-          if (slideChild) {
-              slideChild.setAttribute('style', originalSlideChildStyle);
-          }
           return null;
       }
   };
@@ -602,10 +577,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   const handleDownloadSlide = async () => {
       if (isDownloading) return;
       setIsDownloading(true);
-      
-      const exportId = `export-slide-${activeSlideId}`;
-      const blob = await captureSlide(exportId);
-      
+
+      // Capture the visible preview directly
+      const blob = await captureSlide();
+
       if (blob) {
           window.saveAs(blob, `slide-${activeIndex + 1}.png`);
       } else {
@@ -617,27 +592,29 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   const handleDownloadCarousel = async () => {
       if (isDownloading) return;
       setIsDownloading(true);
-      
+
       const zip = new window.JSZip();
-      let count = 0;
+      const originalActiveId = activeSlideId;
 
       for (let i = 0; i < slides.length; i++) {
           const slide = slides[i];
-          const exportId = `export-slide-${slide.id}`;
-          const blob = await captureSlide(exportId);
+
+          // Switch to this slide and wait for React to re-render
+          setActiveSlideId(slide.id);
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          const blob = await captureSlide();
           if (blob) {
               zip.file(`slide-${i + 1}.png`, blob);
-              count++;
           }
       }
 
-      if (count > 0) {
-          const content = await zip.generateAsync({ type: "blob" });
-          window.saveAs(content, "instagram-carousel.zip");
-      } else {
-          alert("Failed to generate carousel images.");
-      }
-      
+      // Restore original active slide
+      setActiveSlideId(originalActiveId);
+
+      const content = await zip.generateAsync({ type: "blob" });
+      window.saveAs(content, "instagram-carousel.zip");
+
       setIsDownloading(false);
   };
 
@@ -780,26 +757,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
           </div>
         </div>
       )}
-
-      {/* HIDDEN RENDER AREA FOR EXPORT - Each slide in its own absolute container */}
-      {slides.map((slide, idx) => (
-          <div
-              key={`export-wrapper-${slide.id}`}
-              style={{ position: 'absolute', top: 0, left: '-9999px', visibility: 'hidden' }}
-          >
-              <div
-                  id={`export-slide-${slide.id}`}
-                  style={{
-                      width: `${PREVIEW_WIDTH}px`,
-                      height: `${previewHeight}px`,
-                      backgroundColor: theme === 'DARK' ? '#0a0a0a' : '#FFFFFF'
-                  }}
-              >
-                 {renderSlide(slide, idx, true)}
-              </div>
-          </div>
-      ))}
-
 
       {/* Sidebar: Slide List */}
       <div className="w-64 border-r border-gray-700 flex flex-col bg-gray-800 flex-shrink-0 z-20">
@@ -1003,10 +960,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
                         }}
                         className="flex-shrink-0"
                     >
-                        <div 
+                        <div
+                            id="preview-slide-capture"
                             className="relative shadow-2xl bg-white"
-                            style={{ 
-                                width: `${PREVIEW_WIDTH}px`, 
+                            style={{
+                                width: `${PREVIEW_WIDTH}px`,
                                 height: `${previewHeight}px`
                             }}
                         >

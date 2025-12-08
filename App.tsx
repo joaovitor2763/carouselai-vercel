@@ -16,9 +16,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AppStep, CarouselStyle, Profile, Slide, SlideType, AspectRatio } from './types';
+import { AppStep, CarouselStyle, Profile, Slide, SlideType, AspectRatio, UploadedDocument } from './types';
 import { MOCK_SLIDES, DEFAULT_AVATAR } from './constants';
-import { generateCarouselContent, TEXT_MODEL_PRO, TEXT_MODEL_PRO_2_5, TEXT_MODEL_FLASH, setApiKey, getApiKeyMasked, hasApiKey } from './services/geminiService';
+import { generateCarouselContent, processDocument, TEXT_MODEL_PRO, TEXT_MODEL_PRO_2_5, TEXT_MODEL_FLASH, setApiKey, getApiKeyMasked, hasApiKey } from './services/geminiService';
 import Workspace from './components/Workspace';
 
 const App: React.FC = () => {
@@ -47,7 +47,15 @@ const App: React.FC = () => {
   const [slideCount, setSlideCount] = useState(7);
   const [selectedTextModel, setSelectedTextModel] = useState<string>(TEXT_MODEL_PRO);
 
+  // ============================================================================
+  // DOCUMENT UPLOAD STATE
+  // ============================================================================
+  const [uploadedDocument, setUploadedDocument] = useState<UploadedDocument | null>(null);
+  const [isProcessingDocument, setIsProcessingDocument] = useState(false);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const documentInputRef = React.useRef<HTMLInputElement>(null);
 
   // ============================================================================
   // API KEY MANAGEMENT
@@ -121,6 +129,55 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Document Upload Handlers ---
+  /**
+   * Handles document upload for AI carousel generation.
+   * Validates file type and size, then extracts content.
+   */
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['pdf', 'txt', 'md'];
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !validTypes.includes(extension)) {
+      setDocumentError('Unsupported file type. Use PDF, TXT, or MD.');
+      return;
+    }
+
+    // Validate file size (20MB limit for inline base64)
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+    if (file.size > MAX_SIZE) {
+      setDocumentError('File too large. Maximum size is 20MB.');
+      return;
+    }
+
+    setIsProcessingDocument(true);
+    setDocumentError(null);
+
+    try {
+      const doc = await processDocument(file);
+      setUploadedDocument(doc);
+    } catch (error) {
+      console.error('Document processing failed:', error);
+      setDocumentError('Failed to process document. Please try again.');
+    } finally {
+      setIsProcessingDocument(false);
+    }
+  };
+
+  /**
+   * Removes the uploaded document.
+   */
+  const handleRemoveDocument = () => {
+    setUploadedDocument(null);
+    setDocumentError(null);
+    if (documentInputRef.current) {
+      documentInputRef.current.value = '';
+    }
+  };
+
   // --- Step 4: Method Selection ---
   const handleManualCreate = () => {
     setSlides([
@@ -136,17 +193,25 @@ const App: React.FC = () => {
    *
    * The user selects a model (Pro, 2.5 Pro, or Flash) in the UI.
    * The geminiService handles automatic fallback if the selected model fails.
+   * Can use either a topic, an uploaded document, or both.
    *
    * On success: Navigate to Workspace with generated slides
    * On failure: Show alert (user should check API key)
    */
   const handleAiGenerate = async () => {
-    if (!aiTopic.trim()) return;
+    // Require either topic OR document
+    if (!aiTopic.trim() && !uploadedDocument) return;
     setIsGenerating(true);
     try {
       // Model fallback is handled internally by generateCarouselContent
-      const generatedSlides = await generateCarouselContent(aiTopic, slideCount, selectedTextModel);
+      const generatedSlides = await generateCarouselContent(
+        aiTopic,
+        slideCount,
+        selectedTextModel,
+        uploadedDocument || undefined
+      );
       setSlides(generatedSlides);
+      setUploadedDocument(null); // Clear after successful generation
       setStep('WORKSPACE');
     } catch (error) {
       console.error(error);
@@ -363,7 +428,7 @@ const App: React.FC = () => {
                                 <span className="bg-purple-600 text-white text-[10px] uppercase font-bold px-2 py-1 rounded-full">Gemini 3 Pro</span>
                             </div>
                             <h3 className="font-bold text-gray-900 text-lg">✨ Use AI Magic</h3>
-                            <p className="text-sm text-gray-600 mt-1">Give us a topic or URL, and we'll research and structure 5-10 slides for you automatically.</p>
+                            <p className="text-sm text-gray-600 mt-1">Give us a topic, URL, or upload a document (PDF, TXT, MD) and we'll create 5-10 slides automatically.</p>
                         </button>
 
                         <button 
@@ -386,14 +451,80 @@ const App: React.FC = () => {
                         <p className="text-sm text-gray-500 mt-1">We'll use Gemini to create a viral structure.</p>
                     </div>
                     
+                    {/* Topic Input */}
                     <div>
-                        <textarea 
+                        <textarea
                             value={aiTopic}
                             onChange={(e) => setAiTopic(e.target.value)}
-                            className="w-full h-32 border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                            placeholder="e.g. The psychology of pricing for agencies, or paste a blog post URL..."
+                            className="w-full h-28 border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                            placeholder="Enter a topic, paste a URL, or describe what you want to create..."
                         />
                     </div>
+
+                    {/* Document Upload Section */}
+                    <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center hover:border-purple-400 transition-colors">
+                        {uploadedDocument ? (
+                            // Show uploaded file
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl">
+                                        {uploadedDocument.type === 'pdf' ? '📄' : '📃'}
+                                    </span>
+                                    <div className="text-left">
+                                        <p className="text-sm font-medium text-gray-700 truncate max-w-[200px]">
+                                            {uploadedDocument.name}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            {(uploadedDocument.size / 1024).toFixed(1)} KB
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleRemoveDocument}
+                                    className="text-gray-400 hover:text-red-500 p-1"
+                                    type="button"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        ) : isProcessingDocument ? (
+                            // Loading state
+                            <div className="flex items-center justify-center gap-2 py-2">
+                                <svg className="animate-spin h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                <span className="text-sm text-gray-500">Processing document...</span>
+                            </div>
+                        ) : (
+                            // Upload prompt
+                            <label className="cursor-pointer block py-2">
+                                <input
+                                    type="file"
+                                    ref={documentInputRef}
+                                    className="hidden"
+                                    accept=".pdf,.txt,.md"
+                                    onChange={handleDocumentUpload}
+                                />
+                                <span className="text-purple-600 font-medium">Upload a document</span>
+                                <span className="text-gray-400 text-sm ml-1">(PDF, TXT, MD)</span>
+                            </label>
+                        )}
+                    </div>
+
+                    {/* Error message */}
+                    {documentError && (
+                        <p className="text-red-500 text-sm text-center">{documentError}</p>
+                    )}
+
+                    {/* Helpful hint */}
+                    <p className="text-xs text-gray-400 text-center">
+                        {uploadedDocument
+                            ? "Add a topic above to guide the carousel style, or generate directly from the document."
+                            : "Or upload a document to automatically extract content for your carousel."}
+                    </p>
 
                     {/* Controls Row */}
                     <div className="grid grid-cols-2 gap-4">
@@ -432,11 +563,11 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleAiGenerate}
-                        disabled={isGenerating || !aiTopic}
+                        disabled={isGenerating || (!aiTopic.trim() && !uploadedDocument)}
                         className={`w-full py-4 rounded-lg font-bold text-white transition-all flex items-center justify-center space-x-2 ${
-                            isGenerating || !aiTopic ? 'bg-gray-300 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 shadow-lg'
+                            isGenerating || (!aiTopic.trim() && !uploadedDocument) ? 'bg-gray-300 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 shadow-lg'
                         }`}
                     >
                         {isGenerating ? (

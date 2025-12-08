@@ -105,6 +105,19 @@ export interface CarouselProject {
 }
 
 /**
+ * Uploaded document for AI carousel generation.
+ * Supports PDF (vision), TXT, and Markdown files.
+ */
+export interface UploadedDocument {
+  name: string;                    // Original filename
+  type: 'pdf' | 'txt' | 'md';      // File type
+  content: string;                 // Extracted text (for txt/md)
+  base64?: string;                 // Base64 data (for pdf - vision API)
+  mimeType?: string;               // MIME type (for pdf)
+  size: number;                    // File size in bytes
+}
+
+/**
  * Onboarding wizard step identifiers.
  * Controls which screen is displayed in App.tsx.
  */

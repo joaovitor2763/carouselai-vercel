@@ -170,10 +170,10 @@ const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, tota
         className="flex-none flex items-center z-10"
         style={{ marginBottom: `${marginBottom}px`, gap: `${gapSize}px` }}
       >
-        <img 
-          src={profile.avatarUrl || "https://picsum.photos/200"} 
-          alt={profile.name} 
-          crossOrigin="anonymous"
+        <img
+          src={profile.avatarUrl || "https://picsum.photos/200"}
+          alt={profile.name}
+          {...(profile.avatarUrl?.startsWith('data:') ? {} : { crossOrigin: 'anonymous' })}
           className={`rounded-full object-cover border-2 ${borderColor}`}
           style={{ width: `${avatarSize}px`, height: `${avatarSize}px` }}
         />
@@ -230,10 +230,10 @@ const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, tota
              >
                 {slide.imageUrl ? (
                     <div className={`flex-1 w-full rounded-3xl overflow-hidden border ${borderColor} relative shadow-sm`}>
-                        <img 
-                        src={slide.imageUrl} 
-                        alt="Slide visual" 
-                        crossOrigin="anonymous"
+                        <img
+                        src={slide.imageUrl}
+                        alt="Slide visual"
+                        {...(slide.imageUrl?.startsWith('data:') ? {} : { crossOrigin: 'anonymous' })}
                         className="w-full h-full object-cover"
                         style={{ objectPosition: `center ${imageOffsetY}%` }}
                         />
