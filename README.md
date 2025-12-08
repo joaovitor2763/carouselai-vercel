@@ -30,6 +30,7 @@ CarouselAI helps content creators, marketers, and social media managers build pr
 
 - **Gemini 3 Pro Integration** - Uses Google's latest AI model for high-quality content
 - **Document Upload** - Upload PDF, TXT, or Markdown files to generate carousels from existing content
+- **YouTube URL Support** - Paste a YouTube URL to generate carousels from video content (public videos only)
 - **Automatic Slide Structuring** - Generates 5-10 slides with proper flow (hook, content, CTA)
 - **Smart Slide Types** - Creates Cover slides, Content slides, and Call-to-Action slides
 - **Image Prompt Suggestions** - AI suggests relevant image prompts for each slide
@@ -39,6 +40,7 @@ CarouselAI helps content creators, marketers, and social media managers build pr
 - **Gemini 3 Pro Image Model** - Generate stunning images directly in the app
 - **Multiple Aspect Ratios** - Support for 1:1 (square), 4:5 (portrait), 9:16 (story), and 16:9 (landscape)
 - **Image Stylization** - Upload your own images and transform them with AI style prompts
+- **AI Image Editing** - Edit existing slide images with text prompts (e.g., "make it nighttime", "add rain")
 - **Batch Generation** - Generate images for multiple slides simultaneously
 - **Pro & Flash Models** - Choose between quality (Pro) or speed (Flash)
 
@@ -56,6 +58,10 @@ CarouselAI helps content creators, marketers, and social media managers build pr
 - **Adjustable Header/Footer Size** - Scale from 50% to 200%
 - **Slide Numbers** - Toggle slide count indicator
 - **Verified Badge** - Add authenticity to your profile display
+- **Font Controls**:
+  - Three font styles: Modern (sans-serif), Serif (Playfair Display), Tech (JetBrains Mono)
+  - Global font size adjustment (50% - 150%)
+  - Per-slide font overrides for mixed typography
 - **Image Controls**:
   - Height adjustment (10-90%)
   - Vertical position/cropping

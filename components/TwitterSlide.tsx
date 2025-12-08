@@ -15,7 +15,7 @@
  */
 
 import React from 'react';
-import { Slide, Profile, Theme } from '../types';
+import { Slide, Profile, Theme, FontStyle } from '../types';
 
 interface TwitterSlideProps {
   slide: Slide;
@@ -28,7 +28,29 @@ interface TwitterSlideProps {
   forExport?: boolean;       // Not used in Twitter style (same rendering for both)
   showVerifiedBadge?: boolean;
   accentColor?: string;      // Used for pagination badge color
+  fontStyle?: FontStyle;     // Global font style (can be overridden by slide)
+  fontScale?: number;        // Global font scale (can be overridden by slide)
 }
+
+// ============================================================================
+// FONT CONFIGURATION
+// ============================================================================
+
+/**
+ * Maps FontStyle to CSS font-family values.
+ * Uses Google Fonts loaded via CDN in index.html
+ */
+const getFontFamily = (style: FontStyle): string => {
+  switch (style) {
+    case 'SERIF':
+      return '"Playfair Display", Georgia, serif';
+    case 'TECH':
+      return '"JetBrains Mono", "Fira Code", monospace';
+    case 'MODERN':
+    default:
+      return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  }
+};
 
 // ============================================================================
 // MARKDOWN PARSER
@@ -73,10 +95,10 @@ const parseInline = (text: string, theme: Theme) => {
  * - Regular text → 5xl paragraph
  *
  * FONT SCALING:
- * All sizes are pre-calculated for 1080px width output.
+ * Base sizes are pre-calculated for 1080px width output, then multiplied by fontScale.
  * text-7xl ≈ 72px, text-6xl ≈ 60px, text-5xl ≈ 48px, text-4xl ≈ 36px
  */
-const renderMarkdown = (text: string, theme: Theme) => {
+const renderMarkdown = (text: string, theme: Theme, fontScale: number = 1.0) => {
   const lines = text.split('\n');
 
   const hColor = theme === 'DARK' ? 'text-white' : 'text-gray-900';
@@ -84,23 +106,29 @@ const renderMarkdown = (text: string, theme: Theme) => {
   const bulletColor = theme === 'DARK' ? 'text-gray-500' : 'text-gray-400';
   const numberColor = theme === 'DARK' ? 'text-white' : 'text-gray-900';
 
+  // Base font sizes in pixels (for 1080px width)
+  const h1Size = 72 * fontScale;
+  const h2Size = 60 * fontScale;
+  const bodySize = 48 * fontScale;
+  const bulletSize = 36 * fontScale;
+
   return lines.map((line, idx) => {
     const trimmed = line.trim();
 
     // Headers
     if (line.startsWith('# ')) {
-      return <h1 key={idx} className={`text-7xl font-extrabold leading-tight mb-8 tracking-tight ${hColor}`}>{parseInline(line.slice(2), theme)}</h1>;
+      return <h1 key={idx} className={`font-extrabold leading-tight mb-8 tracking-tight ${hColor}`} style={{ fontSize: `${h1Size}px` }}>{parseInline(line.slice(2), theme)}</h1>;
     }
     if (line.startsWith('## ')) {
-      return <h2 key={idx} className={`text-6xl font-bold leading-tight mb-6 tracking-tight ${hColor}`}>{parseInline(line.slice(3), theme)}</h2>;
+      return <h2 key={idx} className={`font-bold leading-tight mb-6 tracking-tight ${hColor}`} style={{ fontSize: `${h2Size}px` }}>{parseInline(line.slice(3), theme)}</h2>;
     }
 
     // Bullet list
     if (trimmed.startsWith('- ')) {
        return (
          <div key={idx} className="flex items-start mb-4 ml-2">
-            <span className={`mr-4 text-4xl mt-1 ${bulletColor}`}>•</span>
-            <span className={`text-5xl leading-normal ${textColor}`}>{parseInline(line.slice(2), theme)}</span>
+            <span className={`mr-4 mt-1 ${bulletColor}`} style={{ fontSize: `${bulletSize}px` }}>•</span>
+            <span className={`leading-normal ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(line.slice(2), theme)}</span>
          </div>
        );
     }
@@ -111,8 +139,8 @@ const renderMarkdown = (text: string, theme: Theme) => {
         const content = trimmed.replace(/^\d+\. /, '');
         return (
             <div key={idx} className="flex items-start mb-4 ml-2">
-               <span className={`mr-4 font-bold text-5xl ${numberColor}`}>{number}.</span>
-               <span className={`text-5xl leading-normal ${textColor}`}>{parseInline(content, theme)}</span>
+               <span className={`mr-4 font-bold ${numberColor}`} style={{ fontSize: `${bodySize}px` }}>{number}.</span>
+               <span className={`leading-normal ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(content, theme)}</span>
             </div>
           );
     }
@@ -121,7 +149,7 @@ const renderMarkdown = (text: string, theme: Theme) => {
     if (!trimmed) return <div key={idx} className="h-8"></div>;
 
     // Regular paragraph
-    return <p key={idx} className={`text-5xl leading-relaxed mb-6 ${textColor}`}>{parseInline(line, theme)}</p>;
+    return <p key={idx} className={`leading-relaxed mb-6 ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(line, theme)}</p>;
   });
 };
 
@@ -129,7 +157,7 @@ const renderMarkdown = (text: string, theme: Theme) => {
 // COMPONENT
 // ============================================================================
 
-const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, total, showSlideNumbers, headerScale = 1.0, theme, forExport = false, showVerifiedBadge = true, accentColor }) => {
+const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, total, showSlideNumbers, headerScale = 1.0, theme, forExport = false, showVerifiedBadge = true, accentColor, fontStyle = 'MODERN', fontScale = 1.0 }) => {
 
   // LAYOUT CALCULATIONS
   // When an image is shown, it takes imageScale% of height; text takes the rest
@@ -137,6 +165,12 @@ const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, tota
   const textHeightPercent = slide.showImage ? 100 - imageScale : 100;
   const imageHeightPercent = slide.showImage ? imageScale : 0;
   const imageOffsetY = slide.imageOffsetY !== undefined ? slide.imageOffsetY : 50;
+
+  // FONT SETTINGS:
+  // Per-slide settings override global settings
+  const effectiveFontStyle = slide.fontStyle || fontStyle;
+  const effectiveFontScale = slide.fontScale !== undefined ? slide.fontScale : fontScale;
+  const fontFamily = getFontFamily(effectiveFontStyle);
 
   // DYNAMIC SCALING PATTERN:
   // All header dimensions are base values multiplied by headerScale.
@@ -161,8 +195,8 @@ const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, tota
 
   return (
     <div
-      className={`w-full h-full flex flex-col p-16 relative overflow-hidden font-sans shadow-sm ${forExport ? '' : 'transition-colors duration-300'}`}
-      style={{ backgroundColor: bgColor }}
+      className={`w-full h-full flex flex-col p-16 relative overflow-hidden shadow-sm ${forExport ? '' : 'transition-colors duration-300'}`}
+      style={{ backgroundColor: bgColor, fontFamily }}
     >
       
       {/* Header: Profile - Dynamically Scaled */}
@@ -218,7 +252,7 @@ const TwitterSlide: React.FC<TwitterSlideProps> = ({ slide, profile, index, tota
             style={{ height: `${textHeightPercent}%` }}
         >
              <div className="flex-1 w-full overflow-y-auto pr-4 no-scrollbar">
-                {renderMarkdown(slide.content, theme)}
+                {renderMarkdown(slide.content, theme, effectiveFontScale)}
              </div>
         </div>
 

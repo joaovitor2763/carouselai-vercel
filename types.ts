@@ -44,6 +44,14 @@ export type AspectRatio = '1/1' | '4/5' | '9/16' | '16/9';
  */
 export type Theme = 'LIGHT' | 'DARK';
 
+/**
+ * Font style options for slides.
+ * - MODERN: Clean sans-serif (system default)
+ * - SERIF: Classic serif font for elegant/editorial look
+ * - TECH: Monospace/technical font for developer/startup content
+ */
+export type FontStyle = 'MODERN' | 'SERIF' | 'TECH';
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -90,6 +98,8 @@ export interface Slide {
   overlayImage?: boolean;        // Storyteller: overlay vs split mode
   imageOffsetY?: number;         // Vertical image alignment (0-100)
   gradientHeight?: number;       // Storyteller: gradient overlay size (0-100)
+  fontStyle?: FontStyle;         // Per-slide font override (undefined = use global)
+  fontScale?: number;            // Per-slide font size multiplier (0.5-1.5, undefined = use global)
 }
 
 /**

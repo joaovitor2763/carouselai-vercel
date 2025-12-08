@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Slide, Profile, CarouselStyle, SlideType, AspectRatio, Theme } from '../types';
+import { Slide, Profile, CarouselStyle, SlideType, AspectRatio, Theme, FontStyle } from '../types';
 import TwitterSlide from './TwitterSlide';
 import StorytellerSlide from './StorytellerSlide';
 import { generateSlideImage, stylizeImage, editImage, getApiAspectRatio, IMAGE_MODEL_PRO, IMAGE_MODEL_FLASH, setApiKey, getApiKeyMasked, hasApiKey } from '../services/geminiService';
@@ -68,6 +68,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   const [headerScale, setHeaderScale] = useState(1.0);       // Profile header size multiplier (0.5 - 2.0)
   const [accentColor, setAccentColor] = useState('#EAB308'); // Highlight color for markdown
   const [showAccent, setShowAccent] = useState(true);
+
+  // ============================================================================
+  // FONT SETTINGS (global, can be overridden per-slide)
+  // ============================================================================
+  const [fontStyle, setFontStyle] = useState<FontStyle>('MODERN');
+  const [fontScale, setFontScale] = useState(1.0); // 0.5 - 1.5
 
   // ============================================================================
   // IMAGE GENERATION SETTINGS
@@ -760,7 +766,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
         headerScale: headerScale,
         theme: theme,
         accentColor: showAccent ? accentColor : undefined,
-        forExport: isExport
+        forExport: isExport,
+        fontStyle: fontStyle,
+        fontScale: fontScale
       };
 
       if (style === CarouselStyle.STORYTELLER) {
@@ -1254,18 +1262,62 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
                     </div>
 
                     {/* Header Scale Slider */}
-                    <div>
+                    <div className="mb-4">
                         <div className="flex justify-between text-xs text-gray-400 mb-1">
                             <span>Header/Footer Size</span>
                             <span>{Math.round(headerScale * 100)}%</span>
                         </div>
-                        <input 
-                            type="range" 
-                            min="0.5" 
-                            max="2.0" 
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="2.0"
                             step="0.1"
-                            value={headerScale} 
+                            value={headerScale}
                             onChange={(e) => setHeaderScale(parseFloat(e.target.value))}
+                            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
+
+                    {/* Font Style Selector */}
+                    <div className="mb-4">
+                        <label className="text-sm font-medium text-gray-300 mb-2 block">Font Style</label>
+                        <div className="flex bg-gray-700 rounded-lg p-1">
+                            <button
+                                onClick={() => setFontStyle('MODERN')}
+                                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-bold transition-all ${fontStyle === 'MODERN' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                Modern
+                            </button>
+                            <button
+                                onClick={() => setFontStyle('SERIF')}
+                                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-bold transition-all ${fontStyle === 'SERIF' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                style={{ fontFamily: '"Playfair Display", serif' }}
+                            >
+                                Serif
+                            </button>
+                            <button
+                                onClick={() => setFontStyle('TECH')}
+                                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-bold transition-all ${fontStyle === 'TECH' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+                            >
+                                Tech
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Font Size Slider */}
+                    <div>
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                            <span>Font Size</span>
+                            <span>{Math.round(fontScale * 100)}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="1.5"
+                            step="0.05"
+                            value={fontScale}
+                            onChange={(e) => setFontScale(parseFloat(e.target.value))}
                             className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
                     </div>
@@ -1288,11 +1340,100 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
 
                 <textarea
                     ref={textAreaRef}
-                    className="w-full min-h-[8rem] bg-gray-700 border border-gray-600 rounded p-3 text-white text-sm mb-6 focus:ring-2 focus:ring-blue-500 outline-none resize-y font-mono"
+                    className="w-full min-h-[8rem] bg-gray-700 border border-gray-600 rounded p-3 text-white text-sm mb-4 focus:ring-2 focus:ring-blue-500 outline-none resize-y font-mono"
                     value={activeSlide.content}
                     onChange={(e) => handleTextChange(e.target.value)}
                     placeholder="Enter text (Markdown supported)..."
                 />
+
+                {/* Per-Slide Font Override */}
+                <div className="mb-4 p-3 bg-gray-750 rounded-lg border border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-gray-400">Slide Font Override</span>
+                        <button
+                            onClick={() => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = {
+                                    ...activeSlide,
+                                    fontStyle: undefined,
+                                    fontScale: undefined
+                                };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className="text-xs text-gray-500 hover:text-gray-300"
+                            title="Reset to global settings"
+                        >
+                            Reset
+                        </button>
+                    </div>
+
+                    {/* Per-Slide Font Style */}
+                    <div className="flex bg-gray-700 rounded-lg p-1 mb-2">
+                        <button
+                            onClick={() => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = { ...activeSlide, fontStyle: undefined };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className={`flex-1 px-1 py-1 rounded text-[10px] font-bold transition-all ${!activeSlide.fontStyle ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            Global
+                        </button>
+                        <button
+                            onClick={() => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = { ...activeSlide, fontStyle: 'MODERN' };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className={`flex-1 px-1 py-1 rounded text-[10px] font-bold transition-all ${activeSlide.fontStyle === 'MODERN' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            Modern
+                        </button>
+                        <button
+                            onClick={() => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = { ...activeSlide, fontStyle: 'SERIF' };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className={`flex-1 px-1 py-1 rounded text-[10px] font-bold transition-all ${activeSlide.fontStyle === 'SERIF' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
+                            style={{ fontFamily: '"Playfair Display", serif' }}
+                        >
+                            Serif
+                        </button>
+                        <button
+                            onClick={() => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = { ...activeSlide, fontStyle: 'TECH' };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className={`flex-1 px-1 py-1 rounded text-[10px] font-bold transition-all ${activeSlide.fontStyle === 'TECH' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
+                            style={{ fontFamily: '"JetBrains Mono", monospace' }}
+                        >
+                            Tech
+                        </button>
+                    </div>
+
+                    {/* Per-Slide Font Size */}
+                    <div>
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                            <span>Size</span>
+                            <span>{activeSlide.fontScale !== undefined ? `${Math.round(activeSlide.fontScale * 100)}%` : 'Global'}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="1.5"
+                            step="0.05"
+                            value={activeSlide.fontScale !== undefined ? activeSlide.fontScale : fontScale}
+                            onChange={(e) => {
+                                const newSlides = [...slides];
+                                newSlides[activeIndex] = { ...activeSlide, fontScale: parseFloat(e.target.value) };
+                                onUpdateSlides(newSlides);
+                            }}
+                            className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
+                </div>
 
                 {/* Image Toggle */}
                 <div className="flex items-center justify-between mb-4">

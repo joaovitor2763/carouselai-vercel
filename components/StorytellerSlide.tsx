@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { Slide, Profile, Theme } from '../types';
+import { Slide, Profile, Theme, FontStyle } from '../types';
 
 interface StorytellerSlideProps {
   slide: Slide;
@@ -27,7 +27,29 @@ interface StorytellerSlideProps {
   forExport?: boolean;       // True when rendering for PNG capture
   showVerifiedBadge?: boolean;
   accentColor?: string;      // Highlight color for __underlined__ text and bullets
+  fontStyle?: FontStyle;     // Global font style (can be overridden by slide)
+  fontScale?: number;        // Global font scale (can be overridden by slide)
 }
+
+// ============================================================================
+// FONT CONFIGURATION
+// ============================================================================
+
+/**
+ * Maps FontStyle to CSS font-family values.
+ * Uses Google Fonts loaded via CDN in index.html
+ */
+const getFontFamily = (style: FontStyle): string => {
+  switch (style) {
+    case 'SERIF':
+      return '"Playfair Display", Georgia, serif';
+    case 'TECH':
+      return '"JetBrains Mono", "Fira Code", monospace';
+    case 'MODERN':
+    default:
+      return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  }
+};
 
 // ============================================================================
 // MARKDOWN PARSER
@@ -66,30 +88,35 @@ const parseInline = (text: string, theme: Theme, accentColor?: string) => {
   });
 };
 
-const renderMarkdown = (text: string, theme: Theme, accentColor?: string) => {
+const renderMarkdown = (text: string, theme: Theme, accentColor?: string, fontScale: number = 1.0) => {
   const lines = text.split('\n');
   const textColor = theme === 'DARK' ? 'text-gray-100' : 'text-gray-900';
-  
+
   // Use accent color for bullets/numbers if provided. Otherwise generic color.
   const bulletStyle = accentColor ? { color: accentColor } : { color: theme === 'DARK' ? '#cbd5e1' : '#475569' };
 
+  // Base font sizes in pixels (for 1080px width), then multiplied by fontScale
+  const h1Size = 72 * fontScale;
+  const h2Size = 48 * fontScale;
+  const bodySize = 36 * fontScale;
+
   return lines.map((line, idx) => {
     const trimmed = line.trim();
-    
+
     // Huge Headers
     if (line.startsWith('# ')) {
-      return <h1 key={idx} className={`text-7xl font-black leading-none mb-8 tracking-tighter uppercase drop-shadow-sm ${textColor}`}>{parseInline(line.slice(2), theme, accentColor)}</h1>;
+      return <h1 key={idx} className={`font-black leading-none mb-8 tracking-tighter uppercase drop-shadow-sm ${textColor}`} style={{ fontSize: `${h1Size}px` }}>{parseInline(line.slice(2), theme, accentColor)}</h1>;
     }
     if (line.startsWith('## ')) {
-      return <h2 key={idx} className={`text-5xl font-extrabold leading-tight mb-6 tracking-tight ${textColor}`}>{parseInline(line.slice(3), theme, accentColor)}</h2>;
+      return <h2 key={idx} className={`font-extrabold leading-tight mb-6 tracking-tight ${textColor}`} style={{ fontSize: `${h2Size}px` }}>{parseInline(line.slice(3), theme, accentColor)}</h2>;
     }
 
     // Lists with accent color
     if (trimmed.startsWith('- ')) {
        return (
          <div key={idx} className="flex items-start mb-4 ml-2">
-            <span className="mr-4 text-4xl mt-1" style={bulletStyle}>●</span>
-            <span className={`text-4xl leading-tight font-medium ${textColor}`}>{parseInline(line.slice(2), theme, accentColor)}</span>
+            <span className="mr-4 mt-1" style={{ ...bulletStyle, fontSize: `${bodySize}px` }}>●</span>
+            <span className={`leading-tight font-medium ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(line.slice(2), theme, accentColor)}</span>
          </div>
        );
     }
@@ -98,8 +125,8 @@ const renderMarkdown = (text: string, theme: Theme, accentColor?: string) => {
         const content = trimmed.replace(/^\d+\. /, '');
         return (
             <div key={idx} className="flex items-start mb-4 ml-2">
-               <span className="mr-4 font-black text-4xl" style={bulletStyle}>{number}.</span>
-               <span className={`text-4xl leading-tight font-medium ${textColor}`}>{parseInline(content, theme, accentColor)}</span>
+               <span className="mr-4 font-black" style={{ ...bulletStyle, fontSize: `${bodySize}px` }}>{number}.</span>
+               <span className={`leading-tight font-medium ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(content, theme, accentColor)}</span>
             </div>
           );
     }
@@ -108,11 +135,11 @@ const renderMarkdown = (text: string, theme: Theme, accentColor?: string) => {
     if (!trimmed) return <div key={idx} className="h-6"></div>;
 
     // Body Text
-    return <p key={idx} className={`text-4xl leading-snug mb-6 font-medium ${textColor}`}>{parseInline(line, theme, accentColor)}</p>;
+    return <p key={idx} className={`leading-snug mb-6 font-medium ${textColor}`} style={{ fontSize: `${bodySize}px` }}>{parseInline(line, theme, accentColor)}</p>;
   });
 };
 
-const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, index, total, showSlideNumbers, headerScale = 1.0, theme, forExport = false, showVerifiedBadge = true, accentColor }) => {
+const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, index, total, showSlideNumbers, headerScale = 1.0, theme, forExport = false, showVerifiedBadge = true, accentColor, fontStyle = 'MODERN', fontScale = 1.0 }) => {
 
   // ============================================================================
   // LAYOUT MODE DETERMINATION
@@ -127,6 +154,12 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
   const imageScale = slide.imageScale || 45;  // Default 45% (smaller than Twitter's 50%)
   const imageOffsetY = slide.imageOffsetY !== undefined ? slide.imageOffsetY : 50; // Vertical crop position
   const gradientHeight = slide.gradientHeight !== undefined ? slide.gradientHeight : 60; // Fade overlay size
+
+  // FONT SETTINGS:
+  // Per-slide settings override global settings
+  const effectiveFontStyle = slide.fontStyle || fontStyle;
+  const effectiveFontScale = slide.fontScale !== undefined ? slide.fontScale : fontScale;
+  const fontFamily = getFontFamily(effectiveFontStyle);
 
   // Calculate layout percentages based on mode
   const splitTextHeight = 100 - imageScale;   // Split mode: remaining space for text
@@ -147,8 +180,8 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
 
   return (
     <div
-      className={`w-full h-full flex flex-col relative overflow-hidden font-sans ${forExport ? '' : 'transition-colors duration-300'}`}
-      style={{ backgroundColor: bgColor }}
+      className={`w-full h-full flex flex-col relative overflow-hidden ${forExport ? '' : 'transition-colors duration-300'}`}
+      style={{ backgroundColor: bgColor, fontFamily }}
     >
       
       {/* ================================================================
@@ -232,7 +265,7 @@ const StorytellerSlide: React.FC<StorytellerSlideProps> = ({ slide, profile, ind
       >
           <div className="w-full h-full overflow-hidden flex flex-col">
                <div className={`flex-1 w-full overflow-y-auto pr-4 no-scrollbar ${!showSplit && 'flex flex-col justify-center'}`}>
-                    {renderMarkdown(slide.content, theme, accentColor)}
+                    {renderMarkdown(slide.content, theme, accentColor, effectiveFontScale)}
                </div>
           </div>
       </div>
