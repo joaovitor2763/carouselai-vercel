@@ -81,6 +81,38 @@ export const IMAGE_MODEL_PRO = "gemini-3-pro-image-preview";
 export const IMAGE_MODEL_FLASH = "gemini-2.5-flash-image";
 
 // ============================================================================
+// YOUTUBE URL DETECTION
+// ============================================================================
+
+/**
+ * Regex to match YouTube URLs in various formats:
+ * - youtube.com/watch?v=VIDEO_ID
+ * - youtu.be/VIDEO_ID
+ * - youtube.com/shorts/VIDEO_ID
+ */
+const YOUTUBE_URL_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[a-zA-Z0-9_-]{11}/g;
+
+/**
+ * Extracts all YouTube URLs from a text string.
+ * Returns an array of full URL matches.
+ */
+const extractYouTubeUrls = (text: string): string[] => {
+  const matches = text.match(YOUTUBE_URL_REGEX);
+  return matches || [];
+};
+
+/**
+ * Normalizes a YouTube URL to the standard format.
+ * Ensures URLs have https:// prefix for API compatibility.
+ */
+const normalizeYouTubeUrl = (url: string): string => {
+  if (!url.startsWith('http')) {
+    return `https://${url}`;
+  }
+  return url;
+};
+
+// ============================================================================
 // ASPECT RATIO MAPPING
 // ============================================================================
 
@@ -88,7 +120,7 @@ export const IMAGE_MODEL_FLASH = "gemini-2.5-flash-image";
  * Converts app's aspect ratio format (CSS-style) to API format (colon-separated).
  * Gemini image API supports: "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"
  */
-const getApiAspectRatio = (ratio: AspectRatio): string => {
+export const getApiAspectRatio = (ratio: AspectRatio): string => {
   const mapping: Record<AspectRatio, string> = {
     '1/1': '1:1',
     '4/5': '4:5',
@@ -236,10 +268,13 @@ export const generateCarouselContent = async (
       Return strictly JSON.
     `;
 
-  // Build contents based on document type
+  // Build contents based on input type
+  // Priority: PDF document → YouTube URLs → Plain text
   // PDF: Use multimodal input (inline base64 + text)
+  // YouTube: Use file_data with file_uri for video content extraction
   // TXT/MD: Text is already included in the prompt above
   const buildContents = () => {
+    // Handle PDF documents (multimodal with inline data)
     if (document?.type === 'pdf' && document.base64) {
       return {
         parts: [
@@ -253,6 +288,20 @@ export const generateCarouselContent = async (
         ]
       };
     }
+
+    // Handle YouTube URLs (multimodal with file_uri)
+    const youtubeUrls = extractYouTubeUrls(effectiveTopic);
+    if (youtubeUrls.length > 0) {
+      const parts: any[] = youtubeUrls.map(url => ({
+        fileData: {
+          fileUri: normalizeYouTubeUrl(url)
+        }
+      }));
+      parts.push({ text: prompt });
+      return { parts };
+    }
+
+    // Default: plain text prompt
     return prompt;
   };
 
@@ -494,6 +543,79 @@ export const stylizeImage = async (
       }
     }
     console.error("Error stylizing image:", error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// IMAGE EDITING
+// ============================================================================
+
+/**
+ * Edits an existing image using AI based on a text prompt.
+ *
+ * Similar to stylizeImage but with editing-focused instructions.
+ * Use this for modifications like "add rain", "make it nighttime",
+ * "remove the person", etc.
+ *
+ * @param imageBase64 - Raw base64 data (NOT a data URI - no "data:image/..." prefix)
+ * @param mimeType - Image MIME type (e.g., "image/png", "image/jpeg")
+ * @param editPrompt - Description of desired changes (e.g., "add rain", "make it darker")
+ * @param apiAspectRatio - Already in API format (e.g., "1:1")
+ * @param modelName - Model to use (Pro for 2K, Flash for fallback)
+ * @returns Base64 data URI of the edited image
+ */
+export const editImage = async (
+  imageBase64: string,
+  mimeType: string,
+  editPrompt: string,
+  apiAspectRatio: string,
+  modelName: string = IMAGE_MODEL_PRO
+): Promise<string> => {
+
+  const generate = async (m: string) => {
+    const isPro = m === IMAGE_MODEL_PRO;
+    const response = await ai.models.generateContent({
+      model: m,
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: imageBase64
+            }
+          },
+          {
+            text: `Edit this image according to the following instructions: ${editPrompt}. Keep the main subject and composition, but apply the requested changes.`
+          }
+        ]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: apiAspectRatio,
+          ...(isPro ? { imageSize: "2K" } : {})
+        }
+      }
+    });
+    return response;
+  };
+
+  try {
+    const response = await generate(modelName);
+    return extractImage(response);
+  } catch (error: any) {
+    // Same permission-based fallback as generateSlideImage
+    if (modelName === IMAGE_MODEL_PRO && (error?.status === 'PERMISSION_DENIED' || error?.status === 403 || error.message?.includes('403'))) {
+      console.warn(`Falling back to ${IMAGE_MODEL_FLASH} for image editing`);
+      try {
+        const response = await generate(IMAGE_MODEL_FLASH);
+        return extractImage(response);
+      } catch (fallbackError) {
+        console.error("Fallback image editing also failed:", fallbackError);
+        throw fallbackError;
+      }
+    }
+    console.error("Error editing image:", error);
     throw error;
   }
 };

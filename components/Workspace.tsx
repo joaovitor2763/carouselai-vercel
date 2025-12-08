@@ -21,7 +21,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Slide, Profile, CarouselStyle, SlideType, AspectRatio, Theme } from '../types';
 import TwitterSlide from './TwitterSlide';
 import StorytellerSlide from './StorytellerSlide';
-import { generateSlideImage, stylizeImage, IMAGE_MODEL_PRO, IMAGE_MODEL_FLASH, setApiKey, getApiKeyMasked, hasApiKey } from '../services/geminiService';
+import { generateSlideImage, stylizeImage, editImage, getApiAspectRatio, IMAGE_MODEL_PRO, IMAGE_MODEL_FLASH, setApiKey, getApiKeyMasked, hasApiKey } from '../services/geminiService';
 
 interface WorkspaceProps {
   slides: Slide[];
@@ -94,6 +94,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   } | null>(null);
   const [stylizePrompt, setStylizePrompt] = useState('');
   const [isStylizing, setIsStylizing] = useState(false);
+
+  // ============================================================================
+  // AI IMAGE EDITING STATE
+  // ============================================================================
+  const [showEditImageModal, setShowEditImageModal] = useState(false);
+  const [editImagePrompt, setEditImagePrompt] = useState('');
+  const [isEditingImage, setIsEditingImage] = useState(false);
 
   /**
    * Finds the closest API-supported aspect ratio for an uploaded image.
@@ -341,6 +348,94 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
     setShowUploadModal(false);
     setPendingUploadImage(null);
     setStylizePrompt('');
+  };
+
+  // ============================================================================
+  // AI IMAGE EDITING HANDLERS
+  // ============================================================================
+
+  /**
+   * Opens the AI image edit modal for the current slide.
+   */
+  const handleOpenEditModal = () => {
+    if (!activeSlide?.imageUrl) return;
+    setShowEditImageModal(true);
+  };
+
+  /**
+   * Closes the AI image edit modal and resets state.
+   */
+  const handleCloseEditModal = () => {
+    setShowEditImageModal(false);
+    setEditImagePrompt('');
+  };
+
+  /**
+   * Applies AI editing to the current slide's image.
+   *
+   * ASYNC PATTERN: Same as stylizeImage - captures slideId early,
+   * uses slidesRef for current state to avoid stale closures.
+   */
+  const handleEditImage = async () => {
+    if (!activeSlide?.imageUrl || !editImagePrompt.trim()) return;
+
+    // Capture slide ID at call time
+    const slideId = activeSlide.id;
+    const currentImageUrl = activeSlide.imageUrl;
+
+    setIsEditingImage(true);
+    try {
+      // Extract base64 and mimeType from data URI
+      const mimeMatch = currentImageUrl.match(/^data:(image\/\w+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+      const rawBase64 = currentImageUrl.replace(/^data:image\/\w+;base64,/, '');
+
+      // Detect aspect ratio from current image
+      const img = new Image();
+      img.src = currentImageUrl;
+      await new Promise<void>((resolve) => {
+        if (img.complete) resolve();
+        else img.onload = () => resolve();
+      });
+      const ratio = img.width / img.height;
+      const detectedRatio = getClosestApiRatio(ratio);
+
+      // Call the edit API
+      const editedImage = await editImage(
+        rawBase64,
+        mimeType,
+        editImagePrompt,
+        detectedRatio,
+        selectedImageModel
+      );
+
+      // Use ref to get latest slides (avoids stale closure)
+      const currentSlides = slidesRef.current;
+      const slideIndex = currentSlides.findIndex(s => s.id === slideId);
+
+      // Handle case where slide was deleted during editing
+      if (slideIndex === -1) {
+        console.warn('Slide was deleted during image editing');
+        return;
+      }
+
+      const slide = currentSlides[slideIndex];
+      const newSlides = [...currentSlides];
+      newSlides[slideIndex] = {
+        ...slide,
+        imageUrl: editedImage
+      };
+      onUpdateSlides(newSlides);
+
+      // Close modal and reset
+      setShowEditImageModal(false);
+      setEditImagePrompt('');
+    } catch (error) {
+      console.error("Image editing failed:", error);
+      alert("Failed to edit image. Please try again.");
+    } finally {
+      setIsEditingImage(false);
+    }
   };
 
   // ============================================================================
@@ -676,6 +771,64 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
 
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
+
+      {/* AI Image Edit Modal */}
+      {showEditImageModal && activeSlide?.imageUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-700">
+            <h3 className="text-lg font-bold text-white mb-4">Edit Image with AI</h3>
+
+            {/* Current Image Preview */}
+            <div className="w-full max-w-[200px] mx-auto mb-4 rounded-lg overflow-hidden border border-gray-600">
+              <img
+                src={activeSlide.imageUrl}
+                alt="Current"
+                className="w-full h-auto object-contain"
+              />
+            </div>
+
+            {/* Edit Prompt */}
+            <div className="space-y-3">
+              <label className="text-sm text-gray-300 font-medium">
+                Describe your edit
+              </label>
+              <textarea
+                value={editImagePrompt}
+                onChange={(e) => setEditImagePrompt(e.target.value)}
+                placeholder="e.g., 'Make it nighttime', 'Add rain', 'Change the background to a beach'"
+                className="w-full h-24 bg-gray-700 border border-gray-600 rounded-lg p-3 text-white text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                disabled={isEditingImage}
+              />
+              <button
+                onClick={handleEditImage}
+                disabled={isEditingImage || !editImagePrompt.trim()}
+                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {isEditingImage ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Editing...
+                  </>
+                ) : (
+                  'Apply Edit'
+                )}
+              </button>
+            </div>
+
+            {/* Cancel */}
+            <button
+              onClick={handleCloseEditModal}
+              disabled={isEditingImage}
+              className="w-full mt-4 text-gray-400 hover:text-white text-sm transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Image Upload Modal */}
       {showUploadModal && pendingUploadImage && (
@@ -1180,18 +1333,33 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
                         {activeSlide.imageUrl ? (
                              <div className="relative aspect-square rounded-md overflow-hidden mb-3 border border-gray-600">
                                 <img src={activeSlide.imageUrl} alt="Thumbnail" className="w-full h-full object-cover" />
-                                <button 
-                                    onClick={() => {
-                                        const newSlides = [...slides];
-                                        newSlides[activeIndex] = { ...activeSlide, imageUrl: undefined };
-                                        onUpdateSlides(newSlides);
-                                    }}
-                                    className="absolute top-1 right-1 bg-black bg-opacity-50 hover:bg-red-500 text-white p-1 rounded-full transition-colors"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                </button>
+                                {/* Action buttons container */}
+                                <div className="absolute top-1 right-1 flex gap-1">
+                                    {/* Edit with AI button */}
+                                    <button
+                                        onClick={handleOpenEditModal}
+                                        className="bg-black bg-opacity-50 hover:bg-blue-500 text-white p-1 rounded-full transition-colors"
+                                        title="Edit with AI"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                    </button>
+                                    {/* Delete button */}
+                                    <button
+                                        onClick={() => {
+                                            const newSlides = [...slides];
+                                            newSlides[activeIndex] = { ...activeSlide, imageUrl: undefined };
+                                            onUpdateSlides(newSlides);
+                                        }}
+                                        className="bg-black bg-opacity-50 hover:bg-red-500 text-white p-1 rounded-full transition-colors"
+                                        title="Remove image"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
                              </div>
                         ) : (
                              <div className="h-32 bg-gray-800 rounded-md border-2 border-dashed border-gray-600 flex items-center justify-center mb-3">
