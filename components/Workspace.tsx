@@ -459,12 +459,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
       const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
       const rawBase64 = currentImageUrl.replace(/^data:image\/\w+;base64,/, '');
 
-      // Detect aspect ratio from current image
-      const img = new Image();
+      // Detect aspect ratio from current image (use window.Image because Image from lucide-react shadows it)
+      const img = new window.Image();
       img.src = currentImageUrl;
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         if (img.complete) resolve();
-        else img.onload = () => resolve();
+        else {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Failed to load image for editing'));
+        }
       });
       const ratio = img.width / img.height;
       const detectedRatio = getClosestApiRatio(ratio);
