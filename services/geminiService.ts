@@ -250,23 +250,63 @@ export const generateCarouselContent = async (
     ? (topic ? `${topic}\n\n--- Document Content ---\n${document.content}` : document.content)
     : topic;
 
-  // PROMPT ENGINEERING: Creates a Twitter-thread style carousel with:
-  // - Slide 1: Hook/Cover to grab attention
-  // - Slides 2-N-1: Educational content
-  // - Slide N: Call to Action
+  // PROMPT ENGINEERING: Creates a carousel using the AIDA framework:
+  // - Slide 1: ATTENTION - Emotional, controversial hook
+  // - Slides 2-N-1: INTEREST + DESIRE - Educational content with storytelling
+  // - Slide N: ACTION - Call to Action
   const prompt = `
-      Act as a viral social media expert. ${documentInstruction}Create an Instagram Carousel in the style of a "Twitter Thread" about the following topic: "${effectiveTopic}".
+Act as a viral social media copywriter and storytelling expert. ${documentInstruction}Create an Instagram Carousel about the following topic: "${effectiveTopic}".
 
-      Requirements:
-      1. Create exactly ${count} slides.
-      2. Slide 1 must be a strong Hook (Type: COVER). Use Markdown for emphasis (e.g. # Header, **bold**).
-      3. Slides 2-${count - 1} should be the educational content (Type: CONTENT). Keep text concise, punchy, like a tweet. Use bullet points if needed.
-      4. Slide ${count} must be a Call to Action (Type: CTA).
-      5. Determine if a slide needs an image to be engaging (needsImage).
-      6. Provide a 'suggestedImagePrompt' for image generation later. If no image is needed, return an empty string.
+## CONTENT FRAMEWORK - AIDA Model with Storytelling
 
-      Return strictly JSON.
-    `;
+### Slide 1 - COVER (ATTENTION)
+Create a title that triggers STRONG EMOTION. The hook must:
+- Spark curiosity, controversy, or outrage
+- Challenge common beliefs or reveal a "dirty secret"
+- Use power words: "Why...", "The truth about...", "Stop doing...", "Nobody tells you..."
+- Make it IMPOSSIBLE to scroll past without reading more
+Type: COVER
+
+### Slides 2-${Math.ceil((count - 2) * 0.3) + 1} - INTEREST (First content slides)
+Hook the reader deeper with:
+- Surprising statistics or counterintuitive insights
+- "Wait, what?" moments that build intrigue
+- Promise of valuable information to come
+Type: CONTENT
+
+### Slides ${Math.ceil((count - 2) * 0.3) + 2}-${count - 1} - INTEREST + DESIRE (Middle to final content slides)
+Deliver value while building desire:
+- Main educational content and insights
+- Show the transformation possible
+- Include social proof or relatable examples
+- Create "I need this" moments
+- Final content slide should create urgency and anticipation for the CTA
+Type: CONTENT
+
+### Slide ${count} - ACTION (CTA)
+Clear, compelling call to action:
+- Tell them exactly what to do next
+- Make it easy to take action
+- Connect back to the desire built throughout
+Type: CTA
+
+## STORYTELLING REQUIREMENTS
+1. Every slide must flow naturally into the next - no disconnected points
+2. Use a consistent narrative voice throughout
+3. Build tension and release it with value
+4. End each slide with an implicit "and then..." that pulls to the next
+
+## FORMATTING
+- Use Markdown for emphasis (# Header, **bold**)
+- Keep text concise and punchy (tweet-length per slide)
+- Use bullet points sparingly for lists
+
+Create exactly ${count} slides.
+For each slide, determine if an image would enhance engagement (needsImage).
+Provide a 'suggestedImagePrompt' for image generation. If no image needed, return empty string.
+
+Return strictly JSON.
+`;
 
   // Build contents based on input type
   // Priority: PDF document → YouTube URLs → Plain text
@@ -421,7 +461,7 @@ export const refineCarouselContent = async (
 
   // Build the refinement prompt
   const prompt = isGlobal
-    ? `You are refining an Instagram carousel. Apply the following feedback to ALL slides while maintaining the overall structure and flow.
+    ? `You are refining an Instagram carousel. Apply the following feedback to ALL slides while maintaining the AIDA framework and storytelling flow.
 
 FEEDBACK: "${feedback}"
 
@@ -434,6 +474,12 @@ Requirements:
 3. Keep the same number of slides (${slides.length})
 4. Preserve Markdown formatting (# headers, **bold**, etc.)
 5. Keep suggestedImagePrompt relevant to the new content
+6. PRESERVE THE AIDA STRUCTURE:
+   - COVER slide must remain emotionally provocative and curiosity-inducing
+   - Early CONTENT slides should build INTEREST with surprising insights
+   - Later CONTENT slides should build DESIRE with transformation/benefits
+   - CTA must connect to the desire built throughout
+7. Maintain storytelling coherence - every slide should flow naturally into the next
 
 Return strictly JSON with the refined slides.`
     : `You are refining a single slide from an Instagram carousel. Apply the following feedback to this specific slide only.
@@ -448,6 +494,10 @@ Requirements:
 2. Maintain the slide type: ${slides[slideIndex].type}
 3. Preserve Markdown formatting (# headers, **bold**, etc.)
 4. Update suggestedImagePrompt if content changed significantly
+5. Preserve the slide's role in the AIDA framework:
+   - COVER: Keep it emotionally provocative and curiosity-inducing
+   - CONTENT: Maintain its role in building Interest or Desire
+   - CTA: Keep it action-oriented and connected to the overall narrative
 
 Return strictly JSON with ONE refined slide.`;
 

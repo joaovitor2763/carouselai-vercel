@@ -307,8 +307,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
           const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
           const rawBase64 = dataUri.replace(/^data:image\/\w+;base64,/, '');
 
-          // Create an Image to detect dimensions
-          const img = new Image();
+          // Create an Image to detect dimensions (use window.Image because Image from lucide-react shadows it)
+          const img = new window.Image();
           img.onload = () => {
             const width = img.width;
             const height = img.height;
@@ -325,8 +325,16 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
             });
             setShowUploadModal(true);
           };
+          img.onerror = () => {
+            console.error('Failed to load image:', file.name);
+            alert(`Failed to load image "${file.name}". The file may be corrupted or in an unsupported format.`);
+          };
           img.src = dataUri;
         }
+      };
+      reader.onerror = () => {
+        console.error('Failed to read file:', file.name);
+        alert(`Failed to read file "${file.name}". Please try again.`);
       };
       reader.readAsDataURL(file);
     }
