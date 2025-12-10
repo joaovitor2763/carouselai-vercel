@@ -204,6 +204,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   const [slideGenerationStatus, setSlideGenerationStatus] = useState<Record<string, 'idle' | 'generating' | 'success' | 'error'>>({});
 
   // ============================================================================
+  // SIDEBAR VIEW MODE (toggle between Global and Per-Slide settings)
+  // ============================================================================
+  const [sidebarView, setSidebarView] = useState<'global' | 'slide'>('slide');
+
+  // ============================================================================
   // API KEY MANAGEMENT (in-workspace override)
   // ============================================================================
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -1444,8 +1449,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
 
             {/* Right Panel: Properties */}
             <div className="w-96 bg-card border-l border-border p-6 flex flex-col overflow-y-auto flex-shrink-0 z-20">
-                
+
+                {/* Sidebar View Toggle */}
+                <div className="mb-4 flex bg-secondary rounded-lg p-1">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSidebarView('slide')}
+                        className={cn(
+                            "flex-1 px-3 py-1.5 text-xs font-semibold",
+                            sidebarView === 'slide' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        <Type className="h-3 w-3 mr-1.5" />
+                        Slide
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSidebarView('global')}
+                        className={cn(
+                            "flex-1 px-3 py-1.5 text-xs font-semibold",
+                            sidebarView === 'global' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        <Settings className="h-3 w-3 mr-1.5" />
+                        Global
+                    </Button>
+                </div>
+
                 {/* Global Settings Section */}
+                {sidebarView === 'global' && (
                 <div className="mb-6 border-b border-border pb-6">
                     <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-4">Global Settings</h3>
 
@@ -1781,7 +1815,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
                         </Button>
                     </div>
                 </div>
+                )}
 
+                {/* Per-Slide Settings Section */}
+                {sidebarView === 'slide' && (
+                <>
                 <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Edit Slide</h3>
 
                 {/* Rich Text Toolbar */}
@@ -2777,6 +2815,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
                              />
                         </div>
                     </div>
+                )}
+                </>
                 )}
 
             </div>
