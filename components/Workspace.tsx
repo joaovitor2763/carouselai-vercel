@@ -17,7 +17,10 @@
  * - Theme, color, and layout customization
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef } from 'react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Slide, Profile, CarouselStyle, CarouselProject, SlideType, AspectRatio, Theme, FontStyle, ContentLayout, LayoutSettings, TextAlignment } from '../types';
 import TwitterSlide from './TwitterSlide';
 import StorytellerSlide from './StorytellerSlide';
@@ -35,7 +38,7 @@ import {
   Plus, Trash2, Download, ArrowLeft, Zap, Upload, X, Loader2,
   ChevronDown, ChevronUp, Settings, Image, Type, Palette,
   CheckSquare, Square, RefreshCw, Sparkles, Pencil, Sun, Moon,
-  FileDown, FolderDown, Save, FolderOpen
+  FileDown, FolderDown, Save, FolderOpen, GripVertical, Copy
 } from 'lucide-react';
 
 type EditorTheme = 'light' | 'dark';
@@ -60,6 +63,157 @@ declare global {
     saveAs: any;       // File download helper
   }
 }
+
+// ============================================================================
+// SORTABLE SLIDE ITEM - Drag-and-drop slide card for sidebar
+// ============================================================================
+interface SortableSlideItemProps {
+  slide: Slide;
+  index: number;
+  isActive: boolean;
+  batchMode: boolean;
+  isSelected: boolean;
+  generationStatus?: 'idle' | 'generating' | 'success' | 'error';
+  isGenerating: boolean;
+  onSelect: () => void;
+  onToggleSelection: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+}
+
+const SortableSlideItem: React.FC<SortableSlideItemProps> = ({
+  slide,
+  index,
+  isActive,
+  batchMode,
+  isSelected,
+  generationStatus,
+  isGenerating,
+  onSelect,
+  onToggleSelection,
+  onDelete,
+  onDuplicate,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: slide.id, disabled: batchMode });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={() => !batchMode && onSelect()}
+      className={cn(
+        "p-3 rounded-lg cursor-pointer transition-all border group",
+        isActive && !batchMode
+          ? "bg-primary border-primary text-primary-foreground"
+          : "bg-secondary border-transparent hover:bg-secondary/80",
+        batchMode && "cursor-default"
+      )}
+    >
+      <div className="flex justify-between items-center mb-1">
+        <div className="flex items-center gap-2">
+          {/* Drag handle - only visible when not in batch mode */}
+          {!batchMode && (
+            <div
+              {...attributes}
+              {...listeners}
+              className={cn(
+                "cursor-grab active:cursor-grabbing p-0.5 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                isActive ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <GripVertical className="h-4 w-4" />
+            </div>
+          )}
+          {/* Checkbox for batch mode */}
+          {batchMode && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={onToggleSelection}
+              className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          <span className="text-xs font-semibold uppercase tracking-wider opacity-70">
+            {slide.type} {index + 1}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Generation Status Indicator (batch mode) */}
+          {generationStatus && (
+            <span className={`text-xs ${
+              generationStatus === 'generating' ? 'text-yellow-400 animate-pulse' :
+              generationStatus === 'success' ? 'text-green-400' :
+              generationStatus === 'error' ? 'text-red-400' : ''
+            }`}>
+              {generationStatus === 'generating' && '...'}
+              {generationStatus === 'success' && '✓'}
+              {generationStatus === 'error' && '✗'}
+            </span>
+          )}
+
+          {/* Individual generation indicator (non-batch mode) */}
+          {!generationStatus && isGenerating && (
+            <span className="text-xs text-primary animate-pulse">...</span>
+          )}
+
+          {!batchMode && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate();
+                }}
+                className="h-6 w-6 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Duplicate slide"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                title="Delete slide"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+      <p className="text-sm truncate opacity-90">{slide.content}</p>
+
+      {/* Image indicator */}
+      {slide.showImage && (
+        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <Image className="w-3 h-3" />
+          {slide.imageUrl ? 'Has image' : 'Needs image'}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRatio, onUpdateSlides, onStyleChange, onBack, editorTheme = 'light', onEditorThemeToggle }) => {
   // ============================================================================
@@ -204,6 +358,24 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
   const [slideGenerationStatus, setSlideGenerationStatus] = useState<Record<string, 'idle' | 'generating' | 'success' | 'error'>>({});
 
   // ============================================================================
+  // DRAG-AND-DROP SLIDE REORDERING
+  // ============================================================================
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 }, // Require 5px drag before activating (prevents accidental drags)
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = slides.findIndex(s => s.id === active.id);
+      const newIndex = slides.findIndex(s => s.id === over.id);
+      onUpdateSlides(arrayMove(slides, oldIndex, newIndex));
+    }
+  };
+
+  // ============================================================================
   // SIDEBAR VIEW MODE (toggle between Global and Per-Slide settings)
   // ============================================================================
   const [sidebarView, setSidebarView] = useState<'global' | 'slide'>('slide');
@@ -271,12 +443,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
       onUpdateSlides(newSlides);
   }
 
-  const handleDeleteSlide = (e: React.MouseEvent) => {
-    e.stopPropagation(); 
+  const handleDeleteSlide = (slideId: string) => {
     if (slides.length <= 1) return;
-    const newSlides = slides.filter(s => s.id !== activeSlideId);
+    const newSlides = slides.filter(s => s.id !== slideId);
     onUpdateSlides(newSlides);
-    setActiveSlideId(newSlides[0].id);
+    // If we deleted the active slide, select the first remaining slide
+    if (activeSlideId === slideId) {
+      setActiveSlideId(newSlides[0].id);
+    }
   };
 
   const handleAddSlide = () => {
@@ -293,6 +467,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
     newSlides.splice(activeIndex + 1, 0, newSlide);
     onUpdateSlides(newSlides);
     setActiveSlideId(newSlide.id);
+  };
+
+  const handleDuplicateSlide = (slideId: string) => {
+    const slideIndex = slides.findIndex(s => s.id === slideId);
+    if (slideIndex === -1) return;
+
+    const slideToDuplicate = slides[slideIndex];
+    const duplicatedSlide: Slide = {
+      ...slideToDuplicate,
+      id: crypto.randomUUID(), // New unique ID
+    };
+
+    const newSlides = [...slides];
+    newSlides.splice(slideIndex + 1, 0, duplicatedSlide); // Insert after the original
+    onUpdateSlides(newSlides);
+    setActiveSlideId(duplicatedSlide.id); // Select the new slide
   };
   
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1267,77 +1457,26 @@ const Workspace: React.FC<WorkspaceProps> = ({ slides, profile, style, aspectRat
               </Button>
             </div>
           )}
-          {slides.map((slide, idx) => (
-            <div
-              key={slide.id}
-              onClick={() => !batchMode && setActiveSlideId(slide.id)}
-              className={cn(
-                "p-3 rounded-lg cursor-pointer transition-all border",
-                activeSlideId === slide.id && !batchMode
-                  ? "bg-primary border-primary text-primary-foreground"
-                  : "bg-secondary border-transparent hover:bg-secondary/80",
-                batchMode && "cursor-default"
-              )}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <div className="flex items-center gap-2">
-                  {/* Checkbox for batch mode */}
-                  {batchMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedSlideIds.has(slide.id)}
-                      onChange={() => toggleSlideSelection(slide.id)}
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  )}
-                  <span className="text-xs font-semibold uppercase tracking-wider opacity-70">
-                    {slide.type} {idx + 1}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Generation Status Indicator (batch mode) */}
-                  {slideGenerationStatus[slide.id] && (
-                    <span className={`text-xs ${
-                      slideGenerationStatus[slide.id] === 'generating' ? 'text-yellow-400 animate-pulse' :
-                      slideGenerationStatus[slide.id] === 'success' ? 'text-green-400' :
-                      slideGenerationStatus[slide.id] === 'error' ? 'text-red-400' : ''
-                    }`}>
-                      {slideGenerationStatus[slide.id] === 'generating' && '...'}
-                      {slideGenerationStatus[slide.id] === 'success' && '✓'}
-                      {slideGenerationStatus[slide.id] === 'error' && '✗'}
-                    </span>
-                  )}
-
-                  {/* Individual generation indicator (non-batch mode) */}
-                  {!slideGenerationStatus[slide.id] && generatingSlideIds.has(slide.id) && (
-                    <span className="text-xs text-primary animate-pulse">...</span>
-                  )}
-
-                  {!batchMode && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleDeleteSlide}
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <p className="text-sm truncate opacity-90">{slide.content}</p>
-
-              {/* Image indicator */}
-              {slide.showImage && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                  <Image className="w-3 h-3" />
-                  {slide.imageUrl ? 'Has image' : 'Needs image'}
-                </div>
-              )}
-            </div>
-          ))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={slides.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              {slides.map((slide, idx) => (
+                <SortableSlideItem
+                  key={slide.id}
+                  slide={slide}
+                  index={idx}
+                  isActive={activeSlideId === slide.id}
+                  batchMode={batchMode}
+                  isSelected={selectedSlideIds.has(slide.id)}
+                  generationStatus={slideGenerationStatus[slide.id]}
+                  isGenerating={generatingSlideIds.has(slide.id)}
+                  onSelect={() => setActiveSlideId(slide.id)}
+                  onToggleSelection={() => toggleSlideSelection(slide.id)}
+                  onDelete={() => handleDeleteSlide(slide.id)}
+                  onDuplicate={() => handleDuplicateSlide(slide.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
         <div className="p-4 border-t border-border">
            <Button variant="ghost" onClick={onBack} className="text-muted-foreground hover:text-foreground text-sm">
