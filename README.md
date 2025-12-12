@@ -4,26 +4,6 @@ Create viral Instagram carousels in seconds with AI-powered content and image ge
 
 CarouselAI helps content creators, marketers, and social media managers build professional-looking Instagram carousels without design skills. Just provide a topic and let AI do the heavy lifting.
 
-## Screenshots
-
-<p align="center">
-  <img src="docs/start-screen.png" alt="Start Screen" width="600"/>
-  <br/>
-  <em>Choose between AI-powered generation or manual creation</em>
-</p>
-
-<p align="center">
-  <img src="docs/style-selection.png" alt="Style Selection" width="600"/>
-  <br/>
-  <em>Select your carousel style: Twitter or Storyteller</em>
-</p>
-
-<p align="center">
-  <img src="docs/workspace.png" alt="Workspace Editor" width="800"/>
-  <br/>
-  <em>Full-featured workspace with live preview and customization options</em>
-</p>
-
 ## Features
 
 ### AI-Powered Content Generation
